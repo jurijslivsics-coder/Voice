@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Голосовой Claude</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;700&family=Ledger&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a28;
+    --accent: #7c6af7;
+    --accent2: #c084fc;
+    --text: #e8e6f0;
+    --muted: #6b6880;
+    --red: #f87171;
+    --green: #4ade80;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Ledger', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+
+  /* Ambient background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(124,106,247,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(192,132,252,0.06) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 480px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  header {
+    text-align: center;
+    padding: 20px 0 28px;
+  }
+
+  header h1 {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 18px;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    color: var(--accent2);
+    text-transform: uppercase;
+  }
+
+  header p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 6px;
+    letter-spacing: 0.05em;
+  }
+
+  /* API Key setup */
+  .setup-card {
+    background: var(--surface);
+    border: 1px solid rgba(124,106,247,0.2);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .setup-card label {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .setup-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .setup-card input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'Ledger', serif;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .setup-card input:focus {
+    border-color: var(--accent);
+  }
+
+  .btn-save {
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    color: white;
+    font-family: 'Unbounded', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+
+  .btn-save:hover { opacity: 0.85; }
+
+  .api-status {
+    font-size: 12px;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    display: none;
+  }
+
+  .api-status.ok { background: rgba(74,222,128,0.1); color: var(--green); display: block; }
+  .api-status.err { background: rgba(248,113,113,0.1); color: var(--red); display: block; }
+
+  /* Chat area */
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    padding-bottom: 16px;
+    min-height: 200px;
+    max-height: 45vh;
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface2) transparent;
+  }
+
+  .message {
+    display: flex;
+    flex-direction: column;
+    max-width: 88%;
+    animation: fadeUp 0.3s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .message.user { align-self: flex-end; align-items: flex-end; }
+  .message.assistant { align-self: flex-start; align-items: flex-start; }
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .user .bubble {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+
+  .assistant .bubble {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg-label {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+
+  /* Speaking indicator */
+  .speaking-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Unbounded', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--accent2);
+    text-transform: uppercase;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .speaking-badge.active { opacity: 1; }
+
+  .speaking-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+    animation: pulse 0.8s ease-in-out infinite alternate;
+  }
+
+  @keyframes pulse {
+    from { transform: scale(1); opacity: 1; }
+    to { transform: scale(1.5); opacity: 0.4; }
+  }
+
+  /* Orb / mic button */
+  .mic-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 0 20px;
+    gap: 18px;
+  }
+
+  .orb-wrapper {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .orb-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(124,106,247,0.3);
+    animation: ringExpand 2s ease-in-out infinite;
+    opacity: 0;
+  }
+
+  .orb-ring:nth-child(1) { width: 100%; height: 100%; animation-delay: 0s; }
+  .orb-ring:nth-child(2) { width: 130%; height: 130%; animation-delay: 0.4s; }
+  .orb-ring:nth-child(3) { width: 160%; height: 160%; animation-delay: 0.8s; }
+
+  @keyframes ringExpand {
+    0% { transform: scale(0.8); opacity: 0.6; }
+    100% { transform: scale(1.1); opacity: 0; }
+  }
+
+  .orb-ring.inactive { animation: none; opacity: 0; }
+
+  .orb-btn {
+    position: relative;
+    z-index: 2;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    transition: transform 0.15s, box-shadow 0.3s;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    box-shadow: 0 0 30px rgba(124,106,247,0.3);
+  }
+
+  .orb-btn:hover { transform: scale(1.05); }
+  .orb-btn:active { transform: scale(0.95); }
+
+  .orb-btn.listening {
+    background: linear-gradient(135deg, var(--red), #fb923c);
+    box-shadow: 0 0 40px rgba(248,113,113,0.4);
+    animation: orbPulse 1s ease-in-out infinite alternate;
+  }
+
+  .orb-btn.thinking {
+    background: linear-gradient(135deg, #06b6d4, var(--accent));
+    box-shadow: 0 0 40px rgba(6,182,212,0.3);
+    animation: orbSpin 2s linear infinite;
+  }
+
+  @keyframes orbPulse {
+    from { box-shadow: 0 0 20px rgba(248,113,113,0.3); }
+    to { box-shadow: 0 0 50px rgba(248,113,113,0.6); }
+  }
+
+  @keyframes orbSpin {
+    from { filter: hue-rotate(0deg); }
+    to { filter: hue-rotate(360deg); }
+  }
+
+  .status-text {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  /* Voice selector */
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control-group label {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .control-group select {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: 'Ledger', serif;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* Stop speaking btn */
+  .btn-stop {
+    background: rgba(248,113,113,0.15);
+    border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: var(--red);
+    font-family: 'Unbounded', sans-serif;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    display: none;
+    text-transform: uppercase;
+  }
+
+  .btn-stop.visible { display: block; }
+
+  /* Transcript preview */
+  .transcript-preview {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--muted);
+    font-style: italic;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 440px;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 0;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    opacity: 0.5;
+  }
+
+  .empty-state span { font-size: 32px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Голосовой Claude</h1>
+    <p>Говори — я отвечу вслух</p>
+  </header>
+
+  <!-- API Key -->
+  <div class="setup-card">
+    <label>API ключ Anthropic</label>
+    <div class="setup-row">
+      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
+      <button class="btn-save" onclick="saveKey()">Сохранить</button>
+    </div>
+    <div class="api-status" id="apiStatus"></div>
+  </div>
+
+  <!-- Chat -->
+  <div class="chat-area" id="chatArea">
+    <div class="empty-state">
+      <span>🎙️</span>
+      <div>Нажми на кнопку и говори по-русски</div>
+    </div>
+  </div>
+
+  <!-- Speaking badge -->
+  <div style="display:flex; justify-content:center; margin: 4px 0;">
+    <div class="speaking-badge" id="speakingBadge">
+      <div class="speaking-dot"></div>
+      Claude говорит...
+    </div>
+  </div>
+
+  <!-- Transcript -->
+  <div class="transcript-preview" id="transcriptPreview">Распознанный текст появится здесь...</div>
+
+  <!-- Mic section -->
+  <div class="mic-section">
+    <div class="orb-wrapper">
+      <div class="orb-ring inactive" id="ring1"></div>
+      <div class="orb-ring inactive" id="ring2"></div>
+      <div class="orb-ring inactive" id="ring3"></div>
+      <button class="orb-btn" id="micBtn" onclick="toggleListening()">🎙️</button>
+    </div>
+    <div class="status-text" id="statusText">Нажми чтобы говорить</div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Голос</label>
+        <select id="voiceSelect"></select>
+      </div>
+      <div class="control-group">
+        <label>Скорость</label>
+        <select id="rateSelect">
+          <option value="0.8">0.8×</option>
+          <option value="1.0" selected>1.0×</option>
+          <option value="1.2">1.2×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+      </div>
+      <button class="btn-stop" id="stopBtn" onclick="stopSpeaking()">⏹ Стоп</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let recognition = null;
+let isListening = false;
+let isSpeaking = false;
+let voices = [];
+let conversationHistory = [];
+
+// Load API key
+const savedKey = localStorage.getItem('claude_api_key');
+if (savedKey) {
+  document.getElementById('apiKey').value = savedKey;
+  showStatus('ok', '✓ API ключ загружен');
+}
+
+function saveKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key.startsWith('sk-ant-')) {
+    showStatus('err', '✗ Неверный формат ключа (должен начинаться с sk-ant-)');
+    return;
+  }
+  localStorage.setItem('claude_api_key', key);
+  showStatus('ok', '✓ Ключ сохранён');
+}
+
+function showStatus(type, msg) {
+  const el = document.getElementById('apiStatus');
+  el.className = 'api-status ' + type;
+  el.textContent = msg;
+}
+
+// Speech Recognition setup
+function setupRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    setStatus('Распознавание речи не поддерживается');
+    return null;
+  }
+  const r = new SpeechRecognition();
+  r.lang = 'ru-RU';
+  r.continuous = false;
+  r.interimResults = true;
+
+  r.onresult = (e) => {
+    let interim = '', final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    document.getElementById('transcriptPreview').textContent = final || interim || '...';
+    if (final) handleUserInput(final.trim());
+  };
+
+  r.onerror = (e) => {
+    setStatus('Нажми чтобы говорить');
+    setListeningState(false);
+  };
+
+  r.onend = () => {
+    if (isListening) setListeningState(false);
+  };
+
+  return r;
+}
+
+function toggleListening() {
+  if (isSpeaking) { stopSpeaking(); return; }
+  if (isListening) {
+    recognition?.stop();
+    setListeningState(false);
+  } else {
+    const key = localStorage.getItem('claude_api_key');
+    if (!key) { showStatus('err', '✗ Сначала введи API ключ'); return; }
+    recognition = setupRecognition();
+    if (!recognition) return;
+    recognition.start();
+    setListeningState(true);
+  }
+}
+
+function setListeningState(state) {
+  isListening = state;
+  const btn = document.getElementById('micBtn');
+  const rings = [document.getElementById('ring1'), document.getElementById('ring2'), document.getElementById('ring3')];
+  if (state) {
+    btn.classList.add('listening');
+    btn.classList.remove('thinking');
+    btn.textContent = '⏹';
+    setStatus('Слушаю...');
+    rings.forEach(r => r.classList.remove('inactive'));
+  } else {
+    btn.classList.remove('listening');
+    btn.textContent = '🎙️';
+    if (!isSpeaking) setStatus('Нажми чтобы говорить');
+    rings.forEach(r => r.classList.add('inactive'));
+  }
+}
+
+function setThinkingState(state) {
+  const btn = document.getElementById('micBtn');
+  if (state) {
+    btn.classList.add('thinking');
+    btn.classList.remove('listening');
+    btn.textContent = '⏳';
+    setStatus('Думаю...');
+  } else {
+    btn.classList.remove('thinking');
+    btn.textContent = '🎙️';
+  }
+}
+
+function setStatus(text) {
+  document.getElementById('statusText').textContent = text;
+}
+
+async function handleUserInput(text) {
+  if (!text) return;
+  addMessage('user', text);
+  document.getElementById('transcriptPreview').textContent = text;
+  setThinkingState(true);
+
+  const key = localStorage.getItem('claude_api_key');
+  conversationHistory.push({ role: 'user', content: text });
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: 'Ты голосовой ассистент. Отвечай коротко, разговорно, по-русски. Без markdown форматирования, без списков с символами, только живая речь. Максимум 3-4 предложения если не просят подробностей.',
+        messages: conversationHistory
+      })
+    });
+
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || 'Извини, не смог ответить.';
+    conversationHistory.push({ role: 'assistant', content: reply });
+    addMessage('assistant', reply);
+    setThinkingState(false);
+    speak(reply);
+  } catch (err) {
+    setThinkingState(false);
+    setStatus('Ошибка — проверь API ключ');
+    addMessage('assistant', 'Ошибка соединения. Проверь API ключ.');
+  }
+}
+
+function addMessage(role, text) {
+  const area = document.getElementById('chatArea');
+  const empty = area.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const div = document.createElement('div');
+  div.className = 'message ' + role;
+  const label = role === 'user' ? 'Ты' : 'Claude';
+  div.innerHTML = `<div class="msg-label">${label}</div><div class="bubble">${text}</div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+// TTS
+const ttsSupported = typeof speechSynthesis !== 'undefined';
+const srSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+if (!ttsSupported || !srSupported) {
+  const warn = document.createElement('div');
+  warn.style.cssText = 'background:#7c2d12;border:1px solid #f97316;border-radius:12px;padding:14px 16px;margin-bottom:16px;font-size:13px;line-height:1.6;color:#fed7aa;';
+  warn.innerHTML = '⚠️ <b>Открой файл в браузере Chrome!</b><br>Этот файл открыт внутри приложения Claude, которое не поддерживает микрофон и голос.<br><br>Как открыть:<br>1. Скачай файл (три точки → Скачать)<br>2. Открой приложение <b>Chrome</b><br>3. Введи в адресной строке: <b>file:///sdcard/Download/voice-claude.html</b>';
+  document.querySelector('.container').insertBefore(warn, document.querySelector('.setup-card'));
+}
+
+function loadVoices() {
+  if (!ttsSupported) return;
+  voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ru') || v.lang.startsWith('ru-'));
+  const sel = document.getElementById('voiceSelect');
+  sel.innerHTML = '';
+  if (voices.length === 0) voices = speechSynthesis.getVoices();
+  voices.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = v.name.replace('Google ', '').replace(' (Russia)', '');
+    sel.appendChild(opt);
+  });
+}
+
+if (ttsSupported) {
+  speechSynthesis.onvoiceschanged = loadVoices;
+  loadVoices();
+}
+
+function speak(text) {
+  if (!ttsSupported) { setStatus('TTS не поддерживается — открой в Chrome'); return; }
+  speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = 'ru-RU';
+  const voiceIdx = parseInt(document.getElementById('voiceSelect').value) || 0;
+  const rate = parseFloat(document.getElementById('rateSelect').value);
+  if (voices[voiceIdx]) utt.voice = voices[voiceIdx];
+  utt.rate = rate;
+  utt.pitch = 1.0;
+
+  utt.onstart = () => {
+    isSpeaking = true;
+    document.getElementById('speakingBadge').classList.add('active');
+    document.getElementById('stopBtn').classList.add('visible');
+    setStatus('Claude говорит... (нажми чтобы остановить)');
+    document.getElementById('micBtn').textContent = '⏹';
+  };
+
+  utt.onend = utt.onerror = () => {
+    isSpeaking = false;
+    document.getElementById('speakingBadge').classList.remove('active');
+    document.getElementById('stopBtn').classList.remove('visible');
+    document.getElementById('micBtn').textContent = '🎙️';
+    setStatus('Нажми чтобы говорить');
+  };
+
+  speechSynthesis.speak(utt);
+}
+
+function stopSpeaking() {
+  if (!ttsSupported) return;
+  speechSynthesis.cancel();
+  isSpeaking = false;
+  document.getElementById('speakingBadge').classList.remove('active');
+  document.getElementById('stopBtn').classList.remove('visible');
+  document.getElementById('micBtn').textContent = '🎙️';
+  setStatus('Нажми чтобы говорить');
+}
+</script>
+</body>
+</html>
