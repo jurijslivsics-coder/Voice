@@ -189,8 +189,11 @@ async function sendToAPI(text) {
   var k = localStorage.getItem('ckey');
   
   try {
+    var controller = new AbortController();
+    var timeout = setTimeout(function(){ controller.abort(); }, 15000);
     var res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': k,
@@ -204,6 +207,7 @@ async function sendToAPI(text) {
         messages: history
       })
     });
+    clearTimeout(timeout);
     
     var data = await res.json();
     
